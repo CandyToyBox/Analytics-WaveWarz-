@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { BattleHistoryPoint } from '../types';
@@ -32,23 +31,24 @@ export const ReplayChart: React.FC<Props> = ({ history, currentTimestamp, colorA
               <stop offset="95%" stopColor={colorB} stopOpacity={0}/>
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
           <XAxis 
             dataKey="timeLabel" 
-            stroke="#64748b" 
+            stroke="#A0AEC0" 
             fontSize={10} 
             tickMargin={10}
             interval="preserveStartEnd"
           />
           <YAxis 
-            stroke="#64748b" 
+            stroke="#A0AEC0" 
             fontSize={10} 
             tickFormatter={(val) => `◎${val}`}
           />
           <Tooltip 
-            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
-            itemStyle={{ fontSize: 12 }}
-            labelStyle={{ fontSize: 10, color: '#94a3b8', marginBottom: 5 }}
+            contentStyle={{ backgroundColor: '#0D1321', borderColor: '#4A5568', color: '#f8fafc' }}
+            itemStyle={{ fontSize: 12, fontFamily: 'monospace' }}
+            labelStyle={{ fontSize: 10, color: '#A0AEC0', marginBottom: 5 }}
+            cursor={{ stroke: '#fff', strokeWidth: 1, strokeDasharray: '3 3' }}
           />
           <Area 
             type="monotone" 

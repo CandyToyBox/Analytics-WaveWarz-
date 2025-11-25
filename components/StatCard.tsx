@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface StatCardProps {
@@ -10,17 +9,17 @@ interface StatCardProps {
   trend?: 'up' | 'down' | 'neutral';
 }
 
-export const StatCard: React.FC<StatCardProps> = ({ label, value, subValue, icon, colorClass = "text-slate-100", trend }) => {
+export const StatCard: React.FC<StatCardProps> = ({ label, value, subValue, icon, colorClass = "text-white", trend }) => {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-navy-800 border border-navy-700 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-2">
-        <span className="text-slate-400 text-sm font-medium">{label}</span>
+        <span className="text-ui-gray text-sm font-medium font-body">{label}</span>
         {icon && <div className={`${colorClass} opacity-80`}>{icon}</div>}
       </div>
       <div className={`text-2xl font-bold ${colorClass}`}>{value}</div>
       {subValue && (
         <div className="text-slate-500 text-xs mt-1 font-mono flex items-center gap-1">
-          {subValue.startsWith('$') ? <span className="text-emerald-400/80">{subValue}</span> : subValue}
+          {subValue.startsWith('$') ? <span className="text-action-green/80">{subValue}</span> : subValue}
         </div>
       )}
     </div>

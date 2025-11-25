@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BattleEvent } from '../types';
 import { EventCard } from './EventCard';
@@ -8,7 +7,7 @@ interface Props {
   onSelect: (event: BattleEvent) => void;
 }
 
-export const EventGrid: React.FC<Props> = ({ events, onSelect }) => {
+const EventGridComponent: React.FC<Props> = ({ events, onSelect }) => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -21,10 +20,12 @@ export const EventGrid: React.FC<Props> = ({ events, onSelect }) => {
           <EventCard 
             key={event.id} 
             event={event} 
-            onClick={() => onSelect(event)} 
+            onSelect={onSelect} 
           />
         ))}
       </div>
     </div>
   );
 };
+
+export const EventGrid = React.memo(EventGridComponent);

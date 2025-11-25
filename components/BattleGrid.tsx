@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BattleSummary } from '../types';
 import { BattleCard } from './BattleCard';
@@ -8,7 +7,7 @@ interface Props {
   onSelect: (battle: BattleSummary) => void;
 }
 
-export const BattleGrid: React.FC<Props> = ({ battles, onSelect }) => {
+const BattleGridComponent: React.FC<Props> = ({ battles, onSelect }) => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -21,10 +20,12 @@ export const BattleGrid: React.FC<Props> = ({ battles, onSelect }) => {
           <BattleCard 
             key={battle.id} 
             battle={battle} 
-            onClick={() => onSelect(battle)} 
+            onSelect={onSelect} 
           />
         ))}
       </div>
     </div>
   );
 };
+
+export const BattleGrid = React.memo(BattleGridComponent);

@@ -108,51 +108,18 @@ export const getBattleLibrary = (): BattleSummary[] => {
     const line = lines[i].trim();
     if (!line) continue;
     
-    // Parse CSV line, handling potential commas within quotes if needed (though this dataset seems clean)
-    // For this dataset, simple split works as there are no internal commas in text fields
     const cols = line.split(',');
     
-    /* 
-      Column Mapping based on provided CSV:
-      0: id (UUID)
-      1: battle_id (BigInt)
-      2: created_at
-      3: status
-      4: artist1_name
-      5: artist2_name
-      6: artist1_wallet
-      7: artist2_wallet
-      8: wavewarz_wallet
-      9: artist1_music_link
-      10: artist2_music_link
-      11: image_url
-      12: artist1_pool (0 in csv)
-      13: artist2_pool (0 in csv)
-      14: artist1_supply (0 in csv)
-      15: artist2_supply (0 in csv)
-      16: battle_duration (seconds)
-      17: winner_decided (boolean)
-      18: winner_artist_a (boolean or null)
-      19: artist1_twitter
-      20: artist2_twitter
-      21: stream_link
-      22: creator_wallet
-      23: split_wallet_address
-      24: is_community_battle
-      25: community_round_id
-    */
-
     const battle: BattleSummary = {
       id: cols[0],
       battleId: cols[1],
       createdAt: cols[2],
-      // Logic: If status is 'Active' but end time passed, mark 'Completed' for UI logic
       status: cols[3],
       artistA: {
         id: 'A',
         name: cols[4],
-        color: '#06b6d4', // Cyan
-        avatar: cols[11], // Fallback to battle image
+        color: '#22B5E8', // Wave Blue
+        avatar: cols[11],
         wallet: cols[6],
         musicLink: cols[9] !== 'null' ? cols[9] : undefined,
         twitter: cols[19] !== 'null' ? cols[19] : undefined
@@ -160,7 +127,7 @@ export const getBattleLibrary = (): BattleSummary[] => {
       artistB: {
         id: 'B',
         name: cols[5],
-        color: '#e879f9', // Fuchsia
+        color: '#6FF34B', // Wave Green
         avatar: cols[11],
         wallet: cols[7],
         musicLink: cols[10] !== 'null' ? cols[10] : undefined,
@@ -178,6 +145,5 @@ export const getBattleLibrary = (): BattleSummary[] => {
     battles.push(battle);
   }
 
-  // Sort by date descending (newest first)
   return battles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };

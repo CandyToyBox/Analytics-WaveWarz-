@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
 import { BattleSummary } from '../types';
-import { Calendar, PlayCircle, Trophy, ExternalLink, Music, Twitter, Users, Image as ImageIcon } from 'lucide-react';
+import { Calendar, Users, Music, Twitter, Image as ImageIcon, BarChart2 } from 'lucide-react';
 
 interface Props {
   battle: BattleSummary;
-  onClick: () => void;
+  onSelect: (battle: BattleSummary) => void;
 }
 
-const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
+const BattleCardComponent: React.FC<Props> = ({ battle, onSelect }) => {
   const [imgSrc, setImgSrc] = useState(battle.imageUrl);
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // If the passed imageUrl changes, reset state
   React.useEffect(() => {
     setImgSrc(battle.imageUrl);
     setHasError(false);
@@ -21,20 +20,17 @@ const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
 
   const handleImageError = () => {
     setHasError(true);
-    // Fallback placeholder that matches the dark theme
     setImgSrc(''); 
   };
 
   return (
     <div 
-      onClick={onClick}
-      className="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-900/20 transition-all cursor-pointer flex flex-col h-full"
+      onClick={() => onSelect(battle)}
+      className="group bg-navy-800 border border-navy-700 rounded-xl overflow-hidden hover:border-wave-blue/50 hover:shadow-lg hover:shadow-wave-blue/10 transition-all cursor-pointer flex flex-col h-full"
     >
-      {/* Image Header with Anti-Flicker Background */}
-      <div className="relative h-48 w-full overflow-hidden bg-slate-950 flex items-center justify-center">
+      <div className="relative h-48 w-full overflow-hidden bg-navy-950 flex items-center justify-center">
         {!hasError && imgSrc && imgSrc !== 'null' ? (
           <>
-             {/* Smooth fade-in for image */}
              <img 
               src={imgSrc} 
               alt={`${battle.artistA.name} vs ${battle.artistB.name}`}
@@ -43,34 +39,23 @@ const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
               onLoad={() => setIsLoaded(true)}
               loading="lazy"
             />
-            {/* Loading skeleton behind image */}
             {!isLoaded && (
-              <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center">
-                 <ImageIcon size={24} className="text-slate-800" />
+              <div className="absolute inset-0 bg-navy-900 animate-pulse flex items-center justify-center">
+                 <ImageIcon size={24} className="text-navy-700" />
               </div>
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center text-slate-700">
+          <div className="flex flex-col items-center justify-center text-slate-600">
             <ImageIcon size={32} className="mb-2 opacity-50" />
             <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">No Image</span>
           </div>
         )}
         
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent opacity-90" />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy-800 via-navy-900/20 to-transparent opacity-90" />
         
-        {/* Status Badge */}
-        <div className="absolute top-3 right-3 z-10">
-          <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide border shadow-sm ${
-            battle.status === 'Active' 
-              ? 'bg-green-500/80 text-white border-green-500/30'
-              : 'bg-slate-800/90 text-slate-300 border-slate-700'
-          }`}>
-            {battle.status}
-          </span>
-        </div>
+        {/* Status label removed as per request for archive view */}
 
-        {/* Community Battle Badge */}
         {battle.isCommunityBattle && (
           <div className="absolute top-3 left-3 z-10">
              <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-orange-500/90 text-white border border-orange-400/50 flex items-center gap-1 shadow-sm">
@@ -79,25 +64,17 @@ const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
           </div>
         )}
 
-        {/* Stream Link */}
-        {battle.streamLink && (
-           <a 
-            href={battle.streamLink} 
-            target="_blank" 
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-3 right-3 p-2 bg-red-600/90 hover:bg-red-500 rounded-full text-white transition-colors backdrop-blur-sm shadow-lg flex items-center gap-2 group/stream z-10"
-          >
-            <PlayCircle size={16} className="animate-pulse" />
-            <span className="text-xs font-bold w-0 overflow-hidden group-hover/stream:w-auto transition-all duration-300 whitespace-nowrap">Watch Live</span>
-           </a>
-        )}
+        <div className="absolute bottom-3 right-3 z-10">
+          <div className="p-2 bg-navy-900/80 text-wave-blue border border-wave-blue/30 hover:bg-wave-blue hover:text-navy-950 rounded-full transition-all backdrop-blur-sm shadow-lg flex items-center gap-2 group/stats">
+            <BarChart2 size={16} />
+            <span className="text-xs font-bold w-0 overflow-hidden group-hover/stats:w-auto transition-all duration-300 whitespace-nowrap">View Stats</span>
+           </div>
+        </div>
       </div>
 
-      {/* Content */}
       <div className="p-4 flex-1 flex flex-col -mt-12 relative z-10">
-        <div className="flex justify-between items-center text-xs text-slate-400 mb-2">
-          <div className="flex items-center gap-1 bg-slate-950/50 px-2 py-1 rounded-full backdrop-blur-sm border border-slate-800">
+        <div className="flex justify-between items-center text-xs text-ui-gray mb-2">
+          <div className="flex items-center gap-1 bg-navy-950/50 px-2 py-1 rounded-full backdrop-blur-sm border border-navy-700 font-mono">
             <Calendar size={12} />
             {new Date(battle.createdAt).toLocaleDateString()}
           </div>
@@ -107,36 +84,33 @@ const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
         </div>
 
         <h3 className="font-bold text-slate-100 text-lg mb-4 flex-1 drop-shadow-md">
-          <span className="text-cyan-400">{battle.artistA.name}</span>
+          <span className="text-wave-blue">{battle.artistA.name}</span>
           <span className="text-slate-500 mx-2 text-sm italic">vs</span>
-          <span className="text-fuchsia-400">{battle.artistB.name}</span>
+          <span className="text-wave-green">{battle.artistB.name}</span>
         </h3>
 
-        {/* Action Grid */}
         <div className="grid grid-cols-2 gap-2 mt-auto">
-          {/* Artist A Actions */}
           <div className="flex gap-1 justify-center">
              {battle.artistA.musicLink && (
-               <a href={battle.artistA.musicLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-colors">
+               <a href={battle.artistA.musicLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-wave-blue/10 hover:bg-wave-blue/20 text-wave-blue border border-wave-blue/20 transition-colors">
                  <Music size={14} />
                </a>
              )}
              {battle.artistA.twitter && (
-               <a href={`https://twitter.com/${battle.artistA.twitter}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-slate-800 hover:bg-sky-500/20 text-slate-400 hover:text-sky-400 border border-slate-700 transition-colors">
+               <a href={`https://twitter.com/${battle.artistA.twitter}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-navy-900 hover:bg-sky-500/20 text-slate-400 hover:text-sky-400 border border-navy-700 transition-colors">
                  <Twitter size={14} />
                </a>
              )}
           </div>
 
-          {/* Artist B Actions */}
            <div className="flex gap-1 justify-center">
              {battle.artistB.musicLink && (
-               <a href={battle.artistB.musicLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/20 transition-colors">
+               <a href={battle.artistB.musicLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-wave-green/10 hover:bg-wave-green/20 text-wave-green border border-wave-green/20 transition-colors">
                  <Music size={14} />
                </a>
              )}
               {battle.artistB.twitter && (
-               <a href={`https://twitter.com/${battle.artistB.twitter}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-slate-800 hover:bg-sky-500/20 text-slate-400 hover:text-sky-400 border border-slate-700 transition-colors">
+               <a href={`https://twitter.com/${battle.artistB.twitter}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center py-2 rounded bg-navy-900 hover:bg-sky-500/20 text-slate-400 hover:text-sky-400 border border-navy-700 transition-colors">
                  <Twitter size={14} />
                </a>
              )}
