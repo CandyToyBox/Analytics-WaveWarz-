@@ -1,10 +1,12 @@
-
 import { createClient } from '@supabase/supabase-js';
-import { BattleSummary } from '../types';
+import { BattleSummary, ArtistLeaderboardStats, TraderLeaderboardEntry, BattleState, TraderProfileStats } from '../types';
 
-// Updated credentials provided by user
-const SUPABASE_URL = 'https://gshwqoplsxgqbdkssoit.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaHdxb3Bsc3hncWJka3Nzb2l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTQ2NDksImV4cCI6MjA3OTUzMDY0OX0.YNv0QgQfUMsrDyWQB3tnKVshal_h7ZjuobKWrQjfzlQ';
+// --- CONFIGURATION ---
+// OFFICIAL WAVEWARZ DB CONNECTION
+// Replace defaults with your official Project URL and Anon Key when ready.
+// The code will prefer environment variables if they exist.
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gshwqoplsxgqbdkssoit.supabase.co'; 
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaHdxb3Bsc3hncWJka3Nzb2l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTQ2NDksImV4cCI6MjA3OTUzMDY0OX0.YNv0QgQfUMsrDyWQB3tnKVshal_h7ZjuobKWrQjfzlQ';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -15,23 +17,23 @@ export async function fetchBattlesFromSupabase(): Promise<BattleSummary[] | null
   }
 
   try {
+    // Attempt to fetch from the official 'battles' table.
+    // Ensure your official DB has a view or table matching this structure or update the select.
     const { data, error } = await supabase
       .from('battles')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      // Gracefully handle error (e.g. table not found) so app falls back to CSV
-      console.warn("Supabase fetch warning:", JSON.stringify(error, null, 2));
+      console.warn("Supabase fetch warning (Official DB might be unreachable):", JSON.stringify(error, null, 2));
       return null;
     }
 
     if (!data || data.length === 0) {
-      console.log("Supabase table found but empty. Using local fallback data.");
+      console.log("Supabase connected but returned no battles. Using local fallback.");
       return null;
     }
 
-    // Map Supabase DB rows to BattleSummary type
     return data.map((row: any) => ({
       id: row.id,
       battleId: row.battle_id,
@@ -41,7 +43,7 @@ export async function fetchBattlesFromSupabase(): Promise<BattleSummary[] | null
         id: 'A',
         name: row.artist1_name,
         color: '#06b6d4',
-        avatar: row.image_url,
+        avatar: row.image_url, // Fallback to event image if specific artist image missing
         wallet: row.artist1_wallet,
         musicLink: row.artist1_music_link,
         twitter: row.artist1_twitter
@@ -57,32 +59,57 @@ export async function fetchBattlesFromSupabase(): Promise<BattleSummary[] | null
       },
       battleDuration: row.battle_duration,
       winnerDecided: row.winner_decided,
-      // Fallback for TVL if provided in DB
       artistASolBalance: row.artist1_pool || 0,
       artistBSolBalance: row.artist2_pool || 0,
       imageUrl: row.image_url,
       streamLink: row.stream_link,
       creatorWallet: row.creator_wallet,
       isCommunityBattle: row.is_community_battle,
-      communityRoundId: row.community_round_id
+      communityRoundId: row.community_round_id,
+      
+      // Dynamic Stats from Cache (if available in DB schema)
+      totalVolumeA: row.total_volume_a || 0,
+      totalVolumeB: row.total_volume_b || 0,
+      tradeCount: row.trade_count || 0,
+      uniqueTraders: row.unique_traders || 0,
+      lastScannedAt: row.last_scanned_at,
+      recentTrades: row.recent_trades_cache,
     }));
 
   } catch (err: any) {
-    // Catch network or client instantiation errors
     const errorMessage = typeof err === 'object' ? JSON.stringify(err, null, 2) : String(err);
     console.warn("Supabase connection failed (using fallback):", errorMessage);
     return null;
   }
 }
 
-// Function to upload local data.ts to Supabase
+export async function updateBattleDynamicStats(state: BattleState) {
+    try {
+        const { error } = await supabase
+            .from('battles')
+            .update({
+                artist1_pool: state.artistASolBalance,
+                artist2_pool: state.artistBSolBalance,
+                total_volume_a: state.totalVolumeA,
+                total_volume_b: state.totalVolumeB,
+                trade_count: state.tradeCount,
+                unique_traders: state.uniqueTraders,
+                last_scanned_at: new Date().toISOString(),
+                recent_trades_cache: state.recentTrades
+            })
+            .eq('battle_id', state.battleId);
+
+        if (error) console.warn("Failed to update battle cache:", error);
+    } catch (e) {
+        console.error("Supabase update error", e);
+    }
+}
+
 export async function uploadBattlesToSupabase(battles: BattleSummary[]) {
   if (!battles || battles.length === 0) return { success: false, message: 'No data to upload' };
 
   try {
-    // Transform BattleSummary objects back to DB columns
     const rows = battles.map(b => ({
-      // id: b.id, // Let Supabase generate new UUIDs or keep existing if you want strict sync
       battle_id: b.battleId,
       created_at: b.createdAt,
       status: b.status,
@@ -104,13 +131,16 @@ export async function uploadBattlesToSupabase(battles: BattleSummary[]) {
       winner_decided: b.winnerDecided,
       
       is_community_battle: b.isCommunityBattle,
-      community_round_id: b.communityRoundId
+      community_round_id: b.communityRoundId,
+
+      // Preserve existing if possible, but map for initial upload
+      total_volume_a: b.totalVolumeA || 0,
+      total_volume_b: b.totalVolumeB || 0
     }));
 
-    // Upsert based on battle_id to prevent duplicates if run multiple times
     const { error } = await supabase
       .from('battles')
-      .upsert(rows, { onConflict: 'battle_id' });
+      .upsert(rows, { onConflict: 'battle_id', ignoreDuplicates: false });
 
     if (error) throw error;
     
@@ -118,5 +148,140 @@ export async function uploadBattlesToSupabase(battles: BattleSummary[]) {
   } catch (e: any) {
     console.error("Upload failed", e);
     return { success: false, message: e.message || JSON.stringify(e) };
+  }
+}
+
+// --- TRADER SNAPSHOTS ---
+
+export async function fetchTraderSnapshotFromDB(wallet: string): Promise<TraderProfileStats | null> {
+    try {
+        const { data, error } = await supabase
+            .from('trader_snapshots')
+            .select('profile_data')
+            .eq('wallet_address', wallet)
+            .single();
+        
+        if (error || !data) return null;
+        return data.profile_data as TraderProfileStats;
+    } catch(e) {
+        return null;
+    }
+}
+
+export async function saveTraderSnapshotToDB(stats: TraderProfileStats) {
+    try {
+        await supabase.from('trader_snapshots').upsert({
+            wallet_address: stats.walletAddress,
+            profile_data: stats,
+            updated_at: new Date().toISOString()
+        });
+    } catch(e) {
+        console.error("Failed to save trader snapshot", e);
+    }
+}
+
+// --- ARTIST LEADERBOARD CACHE ---
+
+export async function fetchArtistLeaderboardFromDB(): Promise<ArtistLeaderboardStats[] | null> {
+  try {
+    const { data, error } = await supabase.from('artist_leaderboard').select('*');
+    if (error || !data || data.length === 0) return null;
+
+    return data.map((row: any) => ({
+      artistName: row.artist_name,
+      walletAddress: row.wallet_address,
+      imageUrl: row.image_url,
+      twitterHandle: row.twitter_handle,
+      musicLink: row.music_link,
+      totalEarningsSol: row.total_earnings_sol,
+      totalEarningsUsd: 0, // Recalculated on frontend based on live price
+      spotifyStreamEquivalents: row.spotify_stream_equivalents,
+      tradingFeeEarnings: 0, // Details not cached in this simplified table
+      settlementEarnings: 0,
+      battlesParticipated: row.battles_participated,
+      wins: row.wins,
+      losses: row.losses,
+      winRate: row.win_rate,
+      totalVolumeGenerated: row.total_volume_generated,
+      avgVolumePerBattle: row.avg_volume_per_battle,
+      bestBattleEarnings: 0,
+      bestBattleName: '',
+    }));
+  } catch (e) {
+    console.warn("Failed to fetch artist leaderboard", e);
+    return null;
+  }
+}
+
+export async function saveArtistLeaderboardToDB(stats: ArtistLeaderboardStats[]) {
+  try {
+    const rows = stats.map(s => ({
+      wallet_address: s.walletAddress || s.artistName, // Fallback PK
+      artist_name: s.artistName,
+      image_url: s.imageUrl,
+      twitter_handle: s.twitterHandle,
+      music_link: s.musicLink,
+      total_earnings_sol: s.totalEarningsSol,
+      spotify_stream_equivalents: s.spotifyStreamEquivalents,
+      battles_participated: s.battlesParticipated,
+      wins: s.wins,
+      losses: s.losses,
+      win_rate: s.winRate,
+      total_volume_generated: s.totalVolumeGenerated,
+      avg_volume_per_battle: s.avgVolumePerBattle,
+      updated_at: new Date().toISOString()
+    }));
+
+    const { error } = await supabase.from('artist_leaderboard').upsert(rows, { onConflict: 'wallet_address' });
+    if (error) throw error;
+    console.log("Artist Leaderboard Saved!");
+  } catch (e) {
+    console.error("Failed to save artist stats", e);
+  }
+}
+
+// --- TRADER LEADERBOARD CACHE ---
+
+export async function fetchTraderLeaderboardFromDB(): Promise<TraderLeaderboardEntry[] | null> {
+  try {
+    const { data, error } = await supabase.from('trader_leaderboard').select('*');
+    if (error || !data || data.length === 0) return null;
+
+    return data.map((row: any) => ({
+      walletAddress: row.wallet_address,
+      totalInvested: row.total_invested,
+      totalPayout: row.total_payout,
+      netPnL: row.net_pnl,
+      roi: row.roi,
+      battlesParticipated: row.battles_participated,
+      wins: row.wins,
+      losses: row.losses,
+      winRate: 0 // Recalculated on frontend if needed
+    }));
+  } catch (e) {
+    console.warn("Failed to fetch trader leaderboard", e);
+    return null;
+  }
+}
+
+export async function saveTraderLeaderboardToDB(traders: TraderLeaderboardEntry[]) {
+  try {
+    const rows = traders.map(t => ({
+      wallet_address: t.walletAddress,
+      total_invested: t.totalInvested,
+      total_payout: t.totalPayout,
+      net_pnl: t.netPnL,
+      roi: t.roi,
+      battles_participated: t.battlesParticipated,
+      wins: t.wins,
+      losses: t.losses,
+      updated_at: new Date().toISOString()
+    }));
+
+    const { error } = await supabase.from('trader_leaderboard').upsert(rows, { onConflict: 'wallet_address' });
+    if (error) throw error;
+    console.log("Trader Leaderboard Saved!");
+  } catch (e) {
+    console.error("Failed to save trader stats", e);
   }
 }

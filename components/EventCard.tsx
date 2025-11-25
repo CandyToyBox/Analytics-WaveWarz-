@@ -1,32 +1,50 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BattleEvent } from '../types';
-import { Calendar, Users, Layers } from 'lucide-react';
+import { Calendar, Users, Layers, Image as ImageIcon } from 'lucide-react';
 
 interface Props {
   event: BattleEvent;
   onClick: () => void;
 }
 
-export const EventCard: React.FC<Props> = ({ event, onClick }) => {
+const EventCardComponent: React.FC<Props> = ({ event, onClick }) => {
   const roundCount = event.rounds.length;
   const isMultiRound = roundCount > 1;
+
+  const [imgSrc, setImgSrc] = useState(event.imageUrl);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(event.imageUrl);
+    setHasError(false);
+  }, [event.imageUrl]);
+
+  const handleImageError = () => {
+    setHasError(true);
+  };
 
   return (
     <div 
       onClick={onClick}
       className="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-900/20 transition-all cursor-pointer flex flex-col h-full"
     >
-      {/* Image Header */}
-      <div className="relative h-48 w-full overflow-hidden">
-        <img 
-          src={event.imageUrl} 
-          alt={`${event.artistA.name} vs ${event.artistB.name}`}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=WaveWarz+Event';
-          }}
-        />
+      {/* Image Header with Anti-Flicker Background */}
+      <div className="relative h-48 w-full overflow-hidden bg-slate-950 flex items-center justify-center">
+        {!hasError && imgSrc && imgSrc !== 'null' ? (
+          <img 
+            src={imgSrc} 
+            alt={`${event.artistA.name} vs ${event.artistB.name}`}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={handleImageError}
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-slate-700">
+            <ImageIcon size={32} className="mb-2 opacity-50" />
+            <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">Event Image</span>
+          </div>
+        )}
+
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent opacity-90" />
         
         {/* Badge */}
@@ -72,3 +90,5 @@ export const EventCard: React.FC<Props> = ({ event, onClick }) => {
     </div>
   );
 };
+
+export const EventCard = React.memo(EventCardComponent);

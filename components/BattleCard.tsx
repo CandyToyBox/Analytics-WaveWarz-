@@ -1,29 +1,63 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BattleSummary } from '../types';
-import { Calendar, PlayCircle, Trophy, ExternalLink, Music, Twitter, Users } from 'lucide-react';
+import { Calendar, PlayCircle, Trophy, ExternalLink, Music, Twitter, Users, Image as ImageIcon } from 'lucide-react';
 
 interface Props {
   battle: BattleSummary;
   onClick: () => void;
 }
 
-export const BattleCard: React.FC<Props> = ({ battle, onClick }) => {
+const BattleCardComponent: React.FC<Props> = ({ battle, onClick }) => {
+  const [imgSrc, setImgSrc] = useState(battle.imageUrl);
+  const [hasError, setHasError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // If the passed imageUrl changes, reset state
+  React.useEffect(() => {
+    setImgSrc(battle.imageUrl);
+    setHasError(false);
+    setIsLoaded(false);
+  }, [battle.imageUrl]);
+
+  const handleImageError = () => {
+    setHasError(true);
+    // Fallback placeholder that matches the dark theme
+    setImgSrc(''); 
+  };
+
   return (
     <div 
       onClick={onClick}
       className="group bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-900/20 transition-all cursor-pointer flex flex-col h-full"
     >
-      {/* Image Header */}
-      <div className="relative h-48 w-full overflow-hidden">
-        <img 
-          src={battle.imageUrl} 
-          alt={`${battle.artistA.name} vs ${battle.artistB.name}`}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=WaveWarz+Battle';
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent opacity-90" />
+      {/* Image Header with Anti-Flicker Background */}
+      <div className="relative h-48 w-full overflow-hidden bg-slate-950 flex items-center justify-center">
+        {!hasError && imgSrc && imgSrc !== 'null' ? (
+          <>
+             {/* Smooth fade-in for image */}
+             <img 
+              src={imgSrc} 
+              alt={`${battle.artistA.name} vs ${battle.artistB.name}`}
+              className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onError={handleImageError}
+              onLoad={() => setIsLoaded(true)}
+              loading="lazy"
+            />
+            {/* Loading skeleton behind image */}
+            {!isLoaded && (
+              <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center">
+                 <ImageIcon size={24} className="text-slate-800" />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-slate-700">
+            <ImageIcon size={32} className="mb-2 opacity-50" />
+            <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">No Image</span>
+          </div>
+        )}
+        
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent opacity-90" />
         
         {/* Status Badge */}
         <div className="absolute top-3 right-3 z-10">
@@ -112,3 +146,5 @@ export const BattleCard: React.FC<Props> = ({ battle, onClick }) => {
     </div>
   );
 };
+
+export const BattleCard = React.memo(BattleCardComponent);

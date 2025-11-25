@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Trophy, 
@@ -41,6 +40,32 @@ import { fetchBattleOnChain, fetchTraderProfile } from './services/solanaService
 import { fetchBattlesFromSupabase } from './services/supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
+// --- FILTER LOGIC ---
+// STRICT MODE: Only allows battles that look "Official" or are valid Community Battles
+const isValidBattle = (b: BattleSummary): boolean => {
+  // 1. KEEP Community Battles (Even if data is partial, user wants these visible)
+  if (b.isCommunityBattle) return true;
+
+  // 2. Official Battle Validation
+  // Must have a valid Image URL (not a placeholder, not null)
+  if (!b.imageUrl || b.imageUrl.trim() === '' || b.imageUrl === 'null') return false;
+
+  // 3. Filter out "Test" naming patterns
+  // Pattern: "Artist " followed by digit/mixed case (e.g. "Artist 4g2w")
+  const isTestName = (name: string) => {
+    return name.includes('Artist ') && /\d/.test(name) && name.length < 20; 
+  };
+  
+  if (isTestName(b.artistA.name) || isTestName(b.artistB.name)) return false;
+  if (b.artistA.name.includes("Unknown") || b.artistB.name.includes("Unknown")) return false;
+  if (b.artistA.name.includes("Unlisted") || b.artistB.name.includes("Unlisted")) return false;
+
+  // 4. Must have Wallet Addresses
+  if (!b.artistA.wallet || !b.artistB.wallet) return false;
+
+  return true;
+};
+
 export default function App() {
   // Navigation State
   const [currentView, setCurrentView] = useState<'grid' | 'events' | 'dashboard' | 'replay' | 'leaderboard' | 'trader'>('grid');
@@ -52,6 +77,7 @@ export default function App() {
   
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
@@ -82,6 +108,7 @@ export default function App() {
         const supabaseData = await fetchBattlesFromSupabase();
         if (supabaseData && supabaseData.length > 0) {
            console.log("Loaded battles from Supabase");
+           // Prioritize DB data
            setLibrary(supabaseData);
            setDataSource('Supabase');
         } else {
@@ -99,8 +126,18 @@ export default function App() {
     initData();
   }, []);
 
-  const artistStats = useMemo(() => calculateLeaderboard(library), [library]);
-  const events = useMemo(() => groupBattlesIntoEvents(library), [library]);
+  // Debounce Search Query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const validLibrary = useMemo(() => library.filter(isValidBattle), [library]);
+  const artistStats = useMemo(() => calculateLeaderboard(validLibrary), [validLibrary]);
+  const events = useMemo(() => groupBattlesIntoEvents(validLibrary), [validLibrary]);
 
   // --- POLLING LOGIC ---
   useEffect(() => {
@@ -212,14 +249,14 @@ export default function App() {
     { name: battle.artistB.name, value: battle.artistBSolBalance, color: battle.artistB.color },
   ] : [];
 
-  // Filter battles for Grid View based on Search
+  // Filter battles for Grid View based on Search AND Validity
   const filteredBattles = useMemo(() => {
-    if (!searchQuery || searchQuery.length > 30) return library; // Ignore wallet addresses
-    return library.filter(b => 
-      b.artistA.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      b.artistB.name.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!debouncedSearchQuery || debouncedSearchQuery.length > 30) return validLibrary; // Ignore wallet addresses or empty
+    return validLibrary.filter(b => 
+      b.artistA.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || 
+      b.artistB.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     );
-  }, [library, searchQuery]);
+  }, [validLibrary, debouncedSearchQuery]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 pb-20">
@@ -416,10 +453,10 @@ export default function App() {
               </div>
               
               {leaderboardTab === 'artists' ? (
-                // Use new Artist Leaderboard with Earnings & Spotify Stats
-                <ArtistLeaderboard battles={library} solPrice={solPrice} />
+                // Use new Artist Leaderboard with Earnings & Spotify Stats (pass filtered valid library)
+                <ArtistLeaderboard battles={validLibrary} solPrice={solPrice} />
               ) : (
-                <TraderLeaderboard battles={library} onSelectTrader={handleSelectTrader} solPrice={solPrice} />
+                <TraderLeaderboard battles={validLibrary} onSelectTrader={handleSelectTrader} solPrice={solPrice} />
               )}
            </div>
         )}

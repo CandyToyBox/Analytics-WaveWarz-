@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BattleSummary, TraderLeaderboardEntry } from '../types';
 import { fetchBatchTraderStats } from '../services/solanaService';
-import { Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Trophy, PlayCircle, StopCircle } from 'lucide-react';
+import { fetchTraderLeaderboardFromDB, saveTraderLeaderboardToDB } from '../services/supabaseClient';
+import { Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown, Wallet, Trophy, PlayCircle, StopCircle, Database, Check } from 'lucide-react';
 import { formatSol, formatPct, formatUsd } from '../utils';
 
 interface Props {
   battles: BattleSummary[];
   onSelectTrader: (wallet: string) => void;
-  solPrice: number; // New Prop
+  solPrice: number;
 }
 
 type SortKey = 'totalInvested' | 'netPnL' | 'roi' | 'battlesParticipated';
@@ -17,29 +18,43 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
   const [traders, setTraders] = useState<TraderLeaderboardEntry[]>([]);
   const [search, setSearch] = useState('');
   
-  // Scanning State
   const [isScanning, setIsScanning] = useState(false);
   const [progressCount, setProgressCount] = useState(0);
+  const [dataOrigin, setDataOrigin] = useState<'Database' | 'Live' | 'Empty'>('Empty');
   
-  // Internal Accumulator (Ref to avoid re-rendering loop issues)
   const rawStatsRef = useRef<Map<string, { invested: number, payout: number, battles: Set<string> }>>(new Map());
-
   const [sortKey, setSortKey] = useState<SortKey>('netPnL');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  // Load from DB on mount
+  useEffect(() => {
+    const init = async () => {
+        const cached = await fetchTraderLeaderboardFromDB();
+        if (cached && cached.length > 0) {
+            setTraders(cached);
+            setDataOrigin('Database');
+        } else {
+            setDataOrigin('Empty');
+            // Auto scan if nothing in DB
+            startScan(); 
+        }
+    };
+    init();
+  }, []);
+
   const startScan = () => {
-    // Reset
     setTraders([]);
     rawStatsRef.current.clear();
     setIsScanning(true);
     setProgressCount(0);
+    setDataOrigin('Live');
   };
 
+  // Scanning Logic
   useEffect(() => {
     let active = true;
 
     const runBatchScan = async () => {
-      // Reduced Batch size and added delay to prevent Rate Limits
       const BATCH_SIZE = 3; 
       
       for (let i = 0; i < battles.length; i += BATCH_SIZE) {
@@ -47,11 +62,9 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
         
         const batch = battles.slice(i, i + BATCH_SIZE);
         
-        // 1. Fetch batch
         try {
             const batchResults = await fetchBatchTraderStats(batch);
             
-            // 2. Merge into accumulator
             for (const [wallet, stats] of batchResults) {
                 if (!rawStatsRef.current.has(wallet)) {
                     rawStatsRef.current.set(wallet, { invested: 0, payout: 0, battles: new Set() });
@@ -62,7 +75,6 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
                 stats.battles.forEach(b => entry.battles.add(b));
             }
             
-            // 3. Update State (Transform Map to Array)
             const newTraderList: TraderLeaderboardEntry[] = Array.from(rawStatsRef.current.entries()).map(([address, data]) => {
                 const netPnL = data.payout - data.invested;
                 let roi = 0;
@@ -75,7 +87,7 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
                     netPnL,
                     roi,
                     battlesParticipated: data.battles.size,
-                    wins: netPnL > 0 ? 1 : 0, // Approximate based on global PnL
+                    wins: netPnL > 0 ? 1 : 0, 
                     losses: netPnL < 0 ? 1 : 0,
                     winRate: netPnL > 0 ? 100 : 0
                 };
@@ -84,14 +96,32 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
             setTraders(newTraderList);
             setProgressCount(Math.min(i + BATCH_SIZE, battles.length));
 
-            // Optional delay to be nice to RPC
             await new Promise(r => setTimeout(r, 1500));
             
         } catch (e) {
             console.error("Batch scan failed", e);
         }
       }
-      if (active) setIsScanning(false);
+      
+      if (active && isScanning) {
+          setIsScanning(false);
+          // Save result to DB when done
+          const finalTraders = Array.from(rawStatsRef.current.entries()).map(([address, data]) => {
+             const netPnL = data.payout - data.invested;
+             return {
+                 walletAddress: address,
+                 totalInvested: data.invested,
+                 totalPayout: data.payout,
+                 netPnL,
+                 roi: data.invested > 0 ? (netPnL / data.invested) * 100 : 0,
+                 battlesParticipated: data.battles.size,
+                 wins: netPnL > 0 ? 1 : 0,
+                 losses: netPnL < 0 ? 1 : 0,
+                 winRate: 0
+             };
+          });
+          saveTraderLeaderboardToDB(finalTraders);
+      }
     };
 
     if (isScanning && battles.length > 0) {
@@ -101,12 +131,6 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
     return () => { active = false; };
   }, [isScanning, battles]);
 
-  // Auto-start on mount if empty
-  useEffect(() => {
-    if (traders.length === 0 && !isScanning) {
-        startScan();
-    }
-  }, []); // Only once
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -147,20 +171,27 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
         </div>
         
         <div className="flex items-center gap-4 w-full md:w-auto">
-             {/* Progress Status */}
              <div className="flex-1 md:flex-none text-right">
-                <div className="text-[10px] uppercase text-slate-500 font-bold tracking-wider mb-1">
-                    {isScanning ? 'Scanning Blockchain...' : 'Scan Complete'}
+                <div className="flex items-center justify-end gap-2 text-[10px] uppercase font-bold tracking-wider mb-1">
+                    {dataOrigin === 'Database' ? (
+                        <span className="text-green-500 flex items-center gap-1"><Check size={10} /> Data from Cache</span>
+                    ) : (
+                        <span className="text-slate-500">
+                           {isScanning ? 'Scanning Blockchain...' : 'Live Scan Complete'}
+                        </span>
+                    )}
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-32 bg-slate-800 rounded-full overflow-hidden">
-                        <div 
-                            className={`h-full transition-all duration-500 ${isScanning ? 'bg-indigo-500 animate-pulse' : 'bg-green-500'}`} 
-                            style={{ width: `${(progressCount / Math.max(battles.length, 1)) * 100}%` }}
-                        />
+                {isScanning && (
+                    <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-32 bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                                className={`h-full transition-all duration-500 ${isScanning ? 'bg-indigo-500 animate-pulse' : 'bg-green-500'}`} 
+                                style={{ width: `${(progressCount / Math.max(battles.length, 1)) * 100}%` }}
+                            />
+                        </div>
+                        <span className="text-xs font-mono text-slate-400">{progressCount}/{battles.length}</span>
                     </div>
-                    <span className="text-xs font-mono text-slate-400">{progressCount}/{battles.length}</span>
-                </div>
+                )}
              </div>
 
             <button 
@@ -171,7 +202,7 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
                   : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-900/20'
               }`}
             >
-              {isScanning ? <><StopCircle size={14} /> Stop</> : <><PlayCircle size={14} /> Refresh</>}
+              {isScanning ? <><StopCircle size={14} /> Stop</> : <><PlayCircle size={14} /> Force Rescan</>}
             </button>
         </div>
       </div>
@@ -179,7 +210,7 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
       {/* Main Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm relative min-h-[400px]">
         
-        {/* Empty State / Initial Load */}
+        {/* Loading State */}
         {traders.length === 0 && isScanning && (
            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-20 backdrop-blur-sm">
              <Loader2 size={40} className="text-indigo-500 animate-spin mb-4" />
@@ -279,9 +310,9 @@ export const TraderLeaderboard: React.FC<Props> = ({ battles, onSelectTrader, so
         </div>
         
         <div className="p-4 bg-slate-950/50 border-t border-slate-800 text-xs text-slate-500 flex justify-between items-center">
-           <span>* Scanning {battles.length} battles for active wallets. Metrics based on realized PnL.</span>
+           <span>* Metrics based on realized PnL across {battles.length} battles.</span>
            <span className={isScanning ? 'text-indigo-400 animate-pulse' : ''}>
-               {isScanning ? 'Live Updating...' : 'Updated'}
+               {isScanning ? 'Live Updating...' : `Last Updated: ${new Date().toLocaleTimeString()}`}
            </span>
         </div>
       </div>

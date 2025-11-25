@@ -1,6 +1,6 @@
-
 import { BattleState, BattleSummary, RecentTrade, TraderProfileStats, TraderBattleHistory, TraderTransaction, TraderLeaderboardEntry } from '../types';
 import { PublicKey, Connection } from '@solana/web3.js';
+import { updateBattleDynamicStats, fetchTraderSnapshotFromDB, saveTraderSnapshotToDB } from './supabaseClient';
 
 // --- CONFIGURATION ---
 const HELIUS_API_KEY = "8b84d8d3-59ad-4778-829b-47db8a9149fa";
@@ -9,13 +9,19 @@ const RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 const BATTLE_SEED = 'battle';
 const VAULT_SEED = 'battle_vault';
 
+// --- PERFORMANCE OPTIMIZATION ---
+// Create the encoder once instead of every time deriveBattlePDA is called
+const encoder = new TextEncoder();
+const battleSeedBuffer = encoder.encode(BATTLE_SEED);
+const vaultSeedBuffer = encoder.encode(VAULT_SEED);
+
 // --- CACHING SYSTEM ---
 interface CacheEntry {
   data: BattleState;
   timestamp: number;
 }
 const battleCache = new Map<string, CacheEntry>();
-const CACHE_TTL = 30_000; // 30 seconds cache
+const CACHE_TTL = 300_000; // 5 minutes (Matches database cache validity idea)
 
 // --- HELPERS ---
 
@@ -55,7 +61,7 @@ export const deriveBattlePDA = (battleId: string | number): PublicKey => {
   
   const [pda] = PublicKey.findProgramAddressSync(
     [
-      new TextEncoder().encode(BATTLE_SEED),
+      battleSeedBuffer,
       new Uint8Array(buffer)
     ],
     PROGRAM_ID
@@ -70,7 +76,7 @@ export const deriveBattleVaultPDA = (battleId: string | number): PublicKey => {
   
   const [pda] = PublicKey.findProgramAddressSync(
     [
-      new TextEncoder().encode(VAULT_SEED),
+      vaultSeedBuffer,
       new Uint8Array(buffer)
     ],
     PROGRAM_ID
@@ -136,18 +142,43 @@ function decodeBattleAccount(data: Uint8Array, summary: BattleSummary): Partial<
 // --- 3. HELIUS FETCHING ---
 
 export async function fetchBattleOnChain(summary: BattleSummary, forceRefresh = false): Promise<BattleState> {
-  // A. Check Cache
+  // A. Check Database/Local Cache validity first
+  // If we have data cached in summary that is recent (e.g. from fetchBattlesFromSupabase), use it.
+  const isRecent = summary.lastScannedAt && (Date.now() - new Date(summary.lastScannedAt).getTime() < CACHE_TTL);
+  
+  if (!forceRefresh && isRecent && summary.totalVolumeA !== undefined) {
+    // Construct BattleState from cached summary without RPC call
+    const battlePda = deriveBattlePDA(summary.battleId).toBase58();
+    return {
+        ...summary,
+        battleAddress: battlePda,
+        startTime: new Date(summary.createdAt).getTime(), // Fallback if not stored
+        endTime: new Date(summary.createdAt).getTime() + (summary.battleDuration * 1000), // Fallback
+        isEnded: true, // Assume ended if using cache for older battles
+        artistASolBalance: summary.artistASolBalance || 0,
+        artistBSolBalance: summary.artistBSolBalance || 0,
+        artistASupply: 0,
+        artistBSupply: 0,
+        totalVolumeA: summary.totalVolumeA || 0,
+        totalVolumeB: summary.totalVolumeB || 0,
+        tradeCount: summary.tradeCount || 0,
+        uniqueTraders: summary.uniqueTraders || 0,
+        recentTrades: summary.recentTrades || []
+    };
+  }
+
+  // B. Fallback to Memory Cache
   const cached = battleCache.get(summary.battleId);
   if (!forceRefresh && cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
     return cached.data;
   }
 
+  // C. RPC Fetch
   const connection = new Connection(RPC_URL);
   const battlePda = deriveBattlePDA(summary.battleId);
   const vaultPda = deriveBattleVaultPDA(summary.battleId);
   const battleAddress = battlePda.toBase58();
 
-  // B. Fetch Account Info (RPC)
   const accountInfo = await connection.getAccountInfo(battlePda);
   
   if (!accountInfo) {
@@ -172,19 +203,18 @@ export async function fetchBattleOnChain(summary: BattleSummary, forceRefresh = 
 
   const chainData = decodeBattleAccount(accountInfo.data, summary);
 
-  // C. Fetch Transaction History (Graceful Fallback)
+  // D. Fetch Transaction History (Graceful Fallback)
   let historyStats = { volumeA: 0, volumeB: 0, tradeCount: 0, uniqueTraders: 0, recentTrades: [] as RecentTrade[] };
   try {
     historyStats = await fetchTransactionStats(battleAddress, vaultPda.toBase58(), chainData.artistASolBalance || 0, chainData.artistBSolBalance || 0);
   } catch (e) {
     console.error("History fetch failed, returning partial data", e);
-    // Return what we have from account data, zeroing out volume to prevent UI errors
   }
 
   const result: BattleState = {
     ...summary,
     ...chainData,
-    battleAddress, // Ensure address is part of state
+    battleAddress,
     artistASolBalance: chainData.artistASolBalance ?? 0,
     artistBSolBalance: chainData.artistBSolBalance ?? 0,
     startTime: chainData.startTime ?? Date.now(),
@@ -199,8 +229,11 @@ export async function fetchBattleOnChain(summary: BattleSummary, forceRefresh = 
     recentTrades: historyStats.recentTrades
   };
 
-  // Update Cache
+  // E. Update Caches
   battleCache.set(summary.battleId, { data: result, timestamp: Date.now() });
+  
+  // Fire and forget update to database
+  updateBattleDynamicStats(result);
 
   return result;
 }
@@ -226,7 +259,6 @@ async function fetchTransactionStats(battleAddress: string, vaultAddress: string
   const LIMIT = 100; // Limit fetch for performance in demo
   let fetchedCount = 0;
 
-  // Calculate domination ratio for heuristic volume split
   const totalTvl = tvlA + tvlB || 1;
   const ratioA = tvlA / totalTvl;
 
@@ -262,15 +294,13 @@ async function fetchTransactionStats(battleAddress: string, vaultAddress: string
 
         if (txVal > 0 && trader) {
           tradeCount++;
-          // Heuristic accumulation
           volumeA += txVal; 
 
-          // Add to recent trades list
           if (recentTrades.length < 20) {
             recentTrades.push({
               signature: tx.signature,
               amount: txVal,
-              artistId: 'Unknown', // We refine this in UI based on lead
+              artistId: 'Unknown', 
               type: isBuy ? 'BUY' : 'SELL',
               timestamp: tx.timestamp * 1000,
               trader
@@ -285,7 +315,6 @@ async function fetchTransactionStats(battleAddress: string, vaultAddress: string
     if (txs.length < 50) hasMore = false;
   }
 
-  // Split accumulated volume based on TVL ratio
   return {
     volumeA: volumeA * ratioA, 
     volumeB: volumeA * (1 - ratioA),
@@ -297,8 +326,6 @@ async function fetchTransactionStats(battleAddress: string, vaultAddress: string
 
 // --- 5. TRADER ANALYTICS SERVICE ---
 
-// NEW: Aggregate leaderboard from a batch of battles
-// Returns a Map of raw stats that the UI can merge incrementally
 export async function fetchBatchTraderStats(battles: BattleSummary[]): Promise<Map<string, { invested: number, payout: number, battles: Set<string> }>> {
     const traderMap = new Map<string, {
         invested: number;
@@ -313,7 +340,6 @@ export async function fetchBatchTraderStats(battles: BattleSummary[]): Promise<M
         let beforeSignature = "";
         let hasMore = true;
         let fetchedCount = 0;
-        // Limit depth per battle
         const DEPTH_LIMIT = 50; 
 
         try {
@@ -333,12 +359,10 @@ export async function fetchBatchTraderStats(battles: BattleSummary[]): Promise<M
                         let trader = '';
                         let type: 'INVEST' | 'PAYOUT' | null = null;
 
-                        // INVEST
                         if (transfer.toUserAccount === vaultPda || transfer.toUserAccount === battlePda) {
                             trader = transfer.fromUserAccount;
                             type = 'INVEST';
                         } 
-                        // PAYOUT
                         else if (transfer.fromUserAccount === vaultPda || transfer.fromUserAccount === battlePda) {
                             trader = transfer.toUserAccount;
                             type = 'PAYOUT';
@@ -368,15 +392,22 @@ export async function fetchBatchTraderStats(battles: BattleSummary[]): Promise<M
 }
 
 export async function fetchTraderProfile(walletAddress: string, library: BattleSummary[]): Promise<TraderProfileStats> {
+  // A. Check Database Cache First
+  const cached = await fetchTraderSnapshotFromDB(walletAddress);
+  if (cached) {
+      // Check if reasonably fresh (e.g. < 24h) or just return immediately for demo
+      // You can add timestamp check here if desired
+      return cached;
+  }
+
+  // B. Fetch Live from Helius if no cache
   const allTxs: any[] = [];
   let beforeSignature = '';
   let hasMore = true;
   let page = 0;
-  // Increase depth to ~1000 transactions to ensure we catch battles back to May 2025
   const MAX_PAGES = 10; 
 
   while (hasMore && page < MAX_PAGES) {
-    // Pagination Loop
     const query = `&limit=100${beforeSignature ? `&before=${beforeSignature}` : ''}`;
     const url = `https://api-mainnet.helius-rpc.com/v0/addresses/${walletAddress}/transactions/?api-key=${HELIUS_API_KEY}${query}`;
     
@@ -387,17 +418,13 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
         hasMore = false;
         break;
       }
-
       allTxs.push(...batch);
-      
-      // Setup next page
       const lastTx = batch[batch.length - 1];
       beforeSignature = lastTx.signature;
       page++;
 
     } catch (e) {
       console.error(`Failed to fetch trader history page ${page}`, e);
-      // Stop fetching on error but process what we have
       hasMore = false; 
     }
   }
@@ -405,7 +432,6 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
   const history: TraderBattleHistory[] = [];
   const battleMap = new Map<string, BattleSummary>();
   
-  // Pre-compute map of battle vaults/PDAs to battles for quick lookup
   library.forEach(b => {
      const pda = deriveBattlePDA(b.battleId).toBase58();
      const vault = deriveBattleVaultPDA(b.battleId).toBase58();
@@ -419,9 +445,7 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
   let totalPayout = 0;
   const battlesParticipated = new Set<string>();
 
-  // Process all collected transactions
   for (const tx of allTxs) {
-    // 1. Detection: Does this transaction involve the WaveWarz Program?
     const accountKeys = tx.accountData?.map((a: any) => a.account) || [];
     const involvesProgram = accountKeys.includes(wavewarzProgramId) || 
                             tx.instructions?.some((ix: any) => ix.programId === wavewarzProgramId);
@@ -431,12 +455,10 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
     for (const transfer of tx.nativeTransfers) {
        const amount = transfer.amount / 1_000_000_000;
        
-       // --- CASE 1: INVESTMENT (User -> Battle) ---
        if (transfer.fromUserAccount === walletAddress) {
           const knownBattle = battleMap.get(transfer.toUserAccount);
           
           if (knownBattle) {
-             // Known Battle
              totalInvested += amount;
              battlesParticipated.add(knownBattle.id);
              
@@ -452,8 +474,6 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
                { signature: tx.signature, type: 'INVEST', amount, date: new Date(tx.timestamp * 1000).toISOString() }
              );
           } else if (involvesProgram) {
-             // UNKNOWN / UNLISTED Battle (Dynamic fallback for new battles not in data.ts)
-             // We treat the destination account as the temporary ID
              const unknownId = `unlisted-${transfer.toUserAccount}`;
              totalInvested += amount;
              battlesParticipated.add(unknownId);
@@ -463,7 +483,7 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
                unknownId, 
                `Unlisted Battle`, 
                `Unknown Opponent`, 
-               "", // Empty image for unlisted to trigger default icon
+               "", 
                new Date(tx.timestamp * 1000).toISOString(), 
                amount, 
                0,
@@ -472,7 +492,6 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
           }
        }
        
-       // --- CASE 2: PAYOUT (Battle -> User) ---
        if (transfer.toUserAccount === walletAddress) {
           const knownBattle = battleMap.get(transfer.fromUserAccount);
           
@@ -499,7 +518,7 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
                unknownId, 
                `Unlisted Battle`, 
                `Unknown Opponent`, 
-               "", // Empty image
+               "", 
                new Date(tx.timestamp * 1000).toISOString(), 
                0, 
                amount,
@@ -510,7 +529,6 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
     }
   }
 
-  // Post-process history to set outcomes
   history.forEach(h => {
     h.pnl = h.payout - h.invested;
     if (h.pnl > 0) h.outcome = 'WIN';
@@ -521,7 +539,7 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
   const wins = history.filter(h => h.outcome === 'WIN').length;
   const losses = history.filter(h => h.outcome === 'LOSS').length;
   
-  return {
+  const stats = {
     walletAddress,
     totalInvested,
     totalPayout,
@@ -531,8 +549,14 @@ export async function fetchTraderProfile(walletAddress: string, library: BattleS
     losses,
     winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
     favoriteArtist: "Unknown", 
-    history: history.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    history: history.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    lastUpdated: new Date().toISOString()
   };
+
+  // C. Save to DB Cache
+  saveTraderSnapshotToDB(stats);
+
+  return stats;
 }
 
 function updateHistory(

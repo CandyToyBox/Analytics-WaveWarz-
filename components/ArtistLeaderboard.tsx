@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { BattleSummary, ArtistLeaderboardStats } from '../types';
 import { calculateArtistLeaderboard, mockEstimateVolumes } from '../services/artistLeaderboardService';
 import { fetchBattleOnChain } from '../services/solanaService';
+import { fetchArtistLeaderboardFromDB, saveArtistLeaderboardToDB } from '../services/supabaseClient';
 import { formatSol, formatUsd, formatPct } from '../utils';
-import { Trophy, Music, Disc, TrendingUp, Twitter, ExternalLink, Loader2, PlayCircle } from 'lucide-react';
+import { Trophy, Music, Disc, TrendingUp, Twitter, ExternalLink, Loader2, PlayCircle, Database, Check } from 'lucide-react';
 
 interface Props {
   battles: BattleSummary[];
@@ -15,49 +16,67 @@ export const ArtistLeaderboard: React.FC<Props> = ({ battles, solPrice }) => {
   const [stats, setStats] = useState<ArtistLeaderboardStats[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [dataOrigin, setDataOrigin] = useState<'Estimated' | 'Database' | 'Live'>('Estimated');
 
-  // Initial load with estimated/static data
+  // Load Data Effect
   useEffect(() => {
-    // Convert summaries to "State" objects with mock volume for immediate display
-    // Real volume requires scanning
-    const initialStates = mockEstimateVolumes(battles);
-    const calculated = calculateArtistLeaderboard(initialStates, solPrice);
-    setStats(calculated);
-  }, [battles, solPrice]);
+    const loadData = async () => {
+      // 1. Try DB first
+      const dbStats = await fetchArtistLeaderboardFromDB();
+      if (dbStats && dbStats.length > 0) {
+        // Recalculate USD dependent values
+        const hydrated = dbStats.map(s => ({
+            ...s,
+            totalEarningsUsd: s.totalEarningsSol * solPrice,
+            // Re-calc spotify if price changes significantly
+            spotifyStreamEquivalents: (s.totalEarningsSol * solPrice) / 0.003
+        })).sort((a,b) => b.totalEarningsSol - a.totalEarningsSol);
+        
+        setStats(hydrated);
+        setDataOrigin('Database');
+      } else {
+        // 2. Fallback to estimation if no DB
+        const initialStates = mockEstimateVolumes(battles);
+        const calculated = calculateArtistLeaderboard(initialStates, solPrice);
+        setStats(calculated);
+        setDataOrigin('Estimated');
+      }
+    };
+    loadData();
+  }, [battles.length, solPrice]); // Re-run if battle count changes significantly or price updates
 
   const handleScan = async () => {
     setIsScanning(true);
     setScanProgress(0);
     
     const enrichedBattles = [];
-    // Reduced Batch fetch to respect rate limits
     const BATCH_SIZE = 2; 
-    const DELAY = 2500; // Increased delay to 2.5s
+    const DELAY = 2000; 
 
     for (let i = 0; i < battles.length; i += BATCH_SIZE) {
         const batch = battles.slice(i, i + BATCH_SIZE);
-        
         try {
             const promises = batch.map(b => fetchBattleOnChain(b));
             const results = await Promise.all(promises);
             enrichedBattles.push(...results);
         } catch (e) {
             console.error("Batch error", e);
-            // Fallback to static data for this batch
             enrichedBattles.push(...batch.map(b => ({
-                ...b, 
-                startTime: 0, endTime: 0, isEnded: true, artistASolBalance: b.artistASolBalance||0, artistBSolBalance: b.artistBSolBalance||0,
+                ...b, startTime: 0, endTime: 0, isEnded: true, artistASolBalance: b.artistASolBalance||0, artistBSolBalance: b.artistBSolBalance||0,
                 artistASupply: 0, artistBSupply: 0, totalVolumeA: 0, totalVolumeB: 0, tradeCount: 0, uniqueTraders: 0, recentTrades: [], battleAddress: ''
             })));
         }
-        
         setScanProgress(enrichedBattles.length);
         await new Promise(r => setTimeout(r, DELAY));
     }
 
     const refinedStats = calculateArtistLeaderboard(enrichedBattles, solPrice);
     setStats(refinedStats);
+    setDataOrigin('Live');
     setIsScanning(false);
+
+    // Save to DB for next time
+    await saveArtistLeaderboardToDB(refinedStats);
   };
 
   const topArtist = stats[0];
@@ -83,36 +102,36 @@ export const ArtistLeaderboard: React.FC<Props> = ({ battles, solPrice }) => {
                     <span className="font-bold">Equivalent to {TotalStreams.toLocaleString()} Spotify Streams</span>
                 </div>
              </div>
-             {/* Background Decoration */}
              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         </div>
 
-        {/* Scan Control */}
-        <div className="flex justify-end">
+        {/* Data Source Control */}
+        <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+               {dataOrigin === 'Database' && <><Check size={14} className="text-green-500" /> Loaded from Cache</>}
+               {dataOrigin === 'Estimated' && <span className="text-orange-400">Viewing Estimated Data</span>}
+               {dataOrigin === 'Live' && <span className="text-green-400 font-bold">Live On-Chain Data (Synced)</span>}
+            </div>
+
              {isScanning ? (
                  <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-lg border border-slate-800">
                     <Loader2 className="animate-spin text-indigo-500" size={16} />
-                    <span className="text-xs text-slate-400">Syncing Blockchain Data... ({scanProgress}/{battles.length})</span>
+                    <span className="text-xs text-slate-400">Scanning Blockchain... ({scanProgress}/{battles.length})</span>
                  </div>
              ) : (
                  <button 
                    onClick={handleScan}
-                   className="flex items-center gap-2 text-xs font-bold text-indigo-400 hover:text-white transition-colors"
+                   className={`flex items-center gap-2 text-xs font-bold transition-colors ${dataOrigin === 'Database' ? 'text-slate-500 hover:text-white' : 'text-indigo-400 hover:text-white'}`}
                  >
-                    <PlayCircle size={14} /> Sync Real-Time Volume
+                    <PlayCircle size={14} /> {dataOrigin === 'Database' ? 'Force Resync Volume' : 'Sync Real-Time Volume'}
                  </button>
              )}
         </div>
 
         {/* The Podium (Top 3) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-            {/* 2nd Place */}
             {runnersUp[0] && <ArtistCard artist={runnersUp[0]} rank={2} solPrice={solPrice} />}
-            
-            {/* 1st Place */}
             {topArtist && <ArtistCard artist={topArtist} rank={1} solPrice={solPrice} isWinner />}
-            
-            {/* 3rd Place */}
             {runnersUp[1] && <ArtistCard artist={runnersUp[1]} rank={3} solPrice={solPrice} />}
         </div>
 
@@ -147,7 +166,6 @@ export const ArtistLeaderboard: React.FC<Props> = ({ battles, solPrice }) => {
                             </div>
                         </div>
 
-                        {/* Metrics */}
                         <div className="flex gap-8 w-full sm:w-auto justify-between sm:justify-end">
                              <div className="text-right">
                                 <div className="text-xs text-slate-500 mb-0.5">Stream Equiv.</div>
@@ -197,7 +215,6 @@ const ArtistCard: React.FC<{ artist: ArtistLeaderboardStats, rank: number, isWin
 
                 <h3 className="text-lg font-bold text-white mb-1 truncate w-full">{artist.artistName}</h3>
                 
-                {/* HERO STAT: Spotify Streams */}
                 <div className="my-4 w-full bg-slate-950/50 rounded-xl p-3 border border-slate-800/50">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Stream Equivalent</div>
                     <div className="text-xl font-black text-green-400 flex items-center justify-center gap-1.5">

@@ -30,6 +30,14 @@ export interface BattleSummary {
   creatorWallet?: string;
   isCommunityBattle?: boolean;
   communityRoundId?: string;
+
+  // --- CACHED DYNAMIC DATA ---
+  totalVolumeA?: number;
+  totalVolumeB?: number;
+  tradeCount?: number;
+  uniqueTraders?: number;
+  lastScannedAt?: string;
+  recentTrades?: RecentTrade[];
 }
 
 export interface BattleEvent {
@@ -203,6 +211,7 @@ export interface TraderProfileStats {
   winRate: number;
   favoriteArtist: string;
   history: TraderBattleHistory[];
+  lastUpdated?: string;
 }
 
 export interface TraderLeaderboardEntry {
