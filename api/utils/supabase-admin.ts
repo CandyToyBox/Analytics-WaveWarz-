@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use VITE_ prefix vars if that's what is set in Vercel, 
-// or standard SUPABASE_URL if you set those.
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.warn('Missing Supabase Environment Variables in API');
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables');
 }
 
-// Create a single instance
-export const supabaseAdmin = createClient(SUPABASE_URL!, SUPABASE_SERVICE_KEY!);
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
+
+export default supabaseAdmin;
