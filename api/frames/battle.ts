@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from '../utils/supabase-admin';
-import { generateBattleFrameHtml } from '../utils/frame-generator';
+import { supabaseAdmin } from '../utils/supabase-admin.js';
+import { generateBattleFrameHtml } from '../utils/frame-generator.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const BASE_URL = `https://${req.headers.host}`;
