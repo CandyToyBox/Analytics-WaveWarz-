@@ -6,6 +6,11 @@ const supabaseKey = process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_K
 
 const supabase = createClient(supabaseUrl, supabaseKey!);
 
+// Fetch extra battles to ensure we have enough after sorting by TVL
+const FETCH_MULTIPLIER = 2;
+// Volume estimation multiplier based on typical trading patterns
+const VOLUME_MULTIPLIER = 10;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -22,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select('*')
       .eq('winner_decided', true)
       .order('created_at', { ascending: false })
-      .limit(limit * 2);
+      .limit(limit * FETCH_MULTIPLIER);
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch top battles', details: error.message });
@@ -55,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         winner,
         winMargin: winnerPool - loserPool,
         totalTVL,
-        estimatedVolume: totalTVL * 10,
+        estimatedVolume: totalTVL * VOLUME_MULTIPLIER,
       };
     });
 

@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       battlesParticipated: trader.battles_participated,
       wins: trader.wins,
       losses: trader.losses,
-      winRate: trader.battles_participated > 0 ? (trader.wins / trader.battles_participated) * 100 : 0,
+      winRate: trader.win_rate ?? (trader.battles_participated > 0 ? (trader.wins / trader.battles_participated) * 100 : 0),
       lastActive: trader.updated_at,
     }));
 
