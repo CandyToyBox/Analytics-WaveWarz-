@@ -109,18 +109,28 @@ export interface SettlementStats {
   winnerId: string;
   winMargin: number;
   loserPoolTotal: number;
-  
+
   // Distribution (Absolute SOL values)
   toWinningTraders: number;
   toWinningArtist: number;
   toLosingArtist: number;
   toPlatform: number;
   toLosingTraders: number;
-  
-  // Artist Earnings
-  artistAEarnings: number;
-  artistBEarnings: number;
-  platformEarnings: number;
+
+  // Artist A earnings breakdown
+  artistAFees: number;           // 1% of Artist A's trading volume
+  artistASettlement: number;     // Settlement bonus (2% or 5% of loser pool)
+  artistAEarnings: number;       // Total (fees + settlement)
+
+  // Artist B earnings breakdown
+  artistBFees: number;           // 1% of Artist B's trading volume
+  artistBSettlement: number;     // Settlement bonus (2% or 5% of loser pool)
+  artistBEarnings: number;       // Total (fees + settlement)
+
+  // Platform earnings breakdown
+  platformFees: number;          // 0.5% of total trading volume
+  platformSettlement: number;    // 3% of loser pool
+  platformEarnings: number;      // Total (fees + settlement)
 }
 
 export interface TraderSimulation {
