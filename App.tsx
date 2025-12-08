@@ -676,32 +676,117 @@ export default function App() {
                 <RoiCalculator battleState={battle} />
 
                 <div className="bg-navy-800 border border-navy-700 rounded-2xl p-6">
-                   <h3 className="text-lg font-bold text-white mb-4">Artist Earnings</h3>
-                   <div className="space-y-4">
-                      <div className="flex justify-between items-center py-2 border-b border-navy-700">
-                        <span className="text-ui-gray text-sm font-body">{battle.artistA.name} Earned</span>
-                        <div className="text-right">
-                          <span className="block text-wave-blue font-mono">{formatSol(settlement.artistAEarnings)}</span>
-                          <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistAEarnings, solPrice)}</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-navy-700">
-                        <span className="text-ui-gray text-sm font-body">{battle.artistB.name} Earned</span>
-                        <div className="text-right">
-                          <span className="block text-wave-green font-mono">{formatSol(settlement.artistBEarnings)}</span>
-                          <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistBEarnings, solPrice)}</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="text-ui-gray text-sm font-body">Platform Earned</span>
-                        <div className="text-right">
-                           <span className="block text-indigo-400 font-mono">{formatSol(settlement.platformEarnings)}</span>
-                           <span className="text-[10px] text-slate-500">{formatUsd(settlement.platformEarnings, solPrice)}</span>
-                        </div>
-                      </div>
+                   <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                     <DollarSign className="w-5 h-5 text-action-green" />
+                     Artist Earnings (Final)
+                   </h3>
+
+                   <div className="space-y-6">
+                     {/* Artist A Earnings */}
+                     <div className="border-b border-navy-700 pb-4">
+                       <div className="flex justify-between items-center mb-3">
+                         <span className="text-slate-200 text-sm font-body font-semibold">
+                           🎵 {battle.artistA.name} earned:
+                         </span>
+                         <div className="text-right">
+                           <span className="block text-wave-blue font-mono font-bold text-lg">
+                             {formatSol(settlement.artistAEarnings)}
+                           </span>
+                           <span className="text-[10px] text-slate-500">
+                             {formatUsd(settlement.artistAEarnings, solPrice)}
+                           </span>
+                         </div>
+                       </div>
+
+                       {/* Breakdown */}
+                       <div className="ml-6 space-y-1.5 text-xs">
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             ├─ Trading fees (1% of {formatSol(battle.totalVolumeA)})
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.artistAFees)}</span>
+                         </div>
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             └─ {settlement.winnerId === 'A' ? 'Winner bonus (5%)' : 'Loser consolation (2%)'}
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.artistASettlement)}</span>
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* Artist B Earnings */}
+                     <div className="border-b border-navy-700 pb-4">
+                       <div className="flex justify-between items-center mb-3">
+                         <span className="text-slate-200 text-sm font-body font-semibold">
+                           🎵 {battle.artistB.name} earned:
+                         </span>
+                         <div className="text-right">
+                           <span className="block text-wave-green font-mono font-bold text-lg">
+                             {formatSol(settlement.artistBEarnings)}
+                           </span>
+                           <span className="text-[10px] text-slate-500">
+                             {formatUsd(settlement.artistBEarnings, solPrice)}
+                           </span>
+                         </div>
+                       </div>
+
+                       {/* Breakdown */}
+                       <div className="ml-6 space-y-1.5 text-xs">
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             ├─ Trading fees (1% of {formatSol(battle.totalVolumeB)})
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.artistBFees)}</span>
+                         </div>
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             └─ {settlement.winnerId === 'B' ? 'Winner bonus (5%)' : 'Loser consolation (2%)'}
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.artistBSettlement)}</span>
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* Platform Earnings */}
+                     <div>
+                       <div className="flex justify-between items-center mb-3">
+                         <span className="text-slate-200 text-sm font-body font-semibold">
+                           ⚡ WaveWarz Platform earned:
+                         </span>
+                         <div className="text-right">
+                           <span className="block text-indigo-400 font-mono font-bold text-lg">
+                             {formatSol(settlement.platformEarnings)}
+                           </span>
+                           <span className="text-[10px] text-slate-500">
+                             {formatUsd(settlement.platformEarnings, solPrice)}
+                           </span>
+                         </div>
+                       </div>
+
+                       {/* Breakdown */}
+                       <div className="ml-6 space-y-1.5 text-xs">
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             ├─ Trading fees (0.5% of total volume)
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.platformFees)}</span>
+                         </div>
+                         <div className="flex justify-between items-center">
+                           <span className="text-slate-400">
+                             └─ Settlement bonus (3% of loser pool)
+                           </span>
+                           <span className="font-mono text-slate-300">{formatSol(settlement.platformSettlement)}</span>
+                         </div>
+                       </div>
+                     </div>
                    </div>
+
+                   {/* Explanation Note */}
                    <div className="mt-4 p-3 bg-wave-blue/10 rounded-lg text-xs text-wave-blue leading-relaxed font-body">
-                     Earnings calculated from 1% trading fees + settlement bonuses.
+                     📖 Artists earn 1% of every trade in their pool, plus settlement bonuses:<br/>
+                     • Winners get 5% of the losing pool<br/>
+                     • Losers get 2% consolation from their own pool
                    </div>
                 </div>
 

@@ -62,8 +62,11 @@ export const calculateSettlement = (state: BattleState): SettlementStats => {
   const platformFees = (state.totalVolumeA + state.totalVolumeB) * FEES.PLATFORM_TRADING_FEE;
 
   // Final Earnings Logic
-  const artistAEarnings = artistAFees + (isAWin ? dist.toWinningArtist : dist.toLosingArtist);
-  const artistBEarnings = artistBFees + (isAWin ? dist.toLosingArtist : dist.toWinningArtist);
+  const artistASettlement = isAWin ? dist.toWinningArtist : dist.toLosingArtist;
+  const artistBSettlement = isAWin ? dist.toLosingArtist : dist.toWinningArtist;
+
+  const artistAEarnings = artistAFees + artistASettlement;
+  const artistBEarnings = artistBFees + artistBSettlement;
   const platformEarnings = platformFees + dist.toPlatform;
 
   return {
@@ -71,8 +74,17 @@ export const calculateSettlement = (state: BattleState): SettlementStats => {
     winMargin,
     loserPoolTotal: loserTVL,
     ...dist,
+    // Artist A breakdown
+    artistAFees,
+    artistASettlement,
     artistAEarnings,
+    // Artist B breakdown
+    artistBFees,
+    artistBSettlement,
     artistBEarnings,
+    // Platform breakdown
+    platformFees,
+    platformSettlement: dist.toPlatform,
     platformEarnings
   };
 };
