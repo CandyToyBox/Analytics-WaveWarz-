@@ -37,6 +37,7 @@ import { MomentumGauge } from './components/MomentumGauge';
 import { ShareButton } from './components/ShareButton';
 import { TraderProfile } from './components/TraderProfile';
 import { DebugDataSync } from './components/DebugDataSync';
+import { InfoTooltip } from './components/InfoTooltip';
 import { getBattleLibrary } from './data';
 import { fetchBattleOnChain, fetchTraderProfile } from './services/solanaService';
 import { fetchBattlesFromSupabase } from './services/supabaseClient';
@@ -566,6 +567,7 @@ export default function App() {
                 subValue={formatUsd(totalVolume, solPrice)}
                 icon={<BarChart3 size={20} />}
                 colorClass="text-wave-blue"
+                tooltip="Total sum of all buy and sell transactions executed during this battle. This represents the total trading activity across both artist pools."
               />
               <StatCard
                 label="Trades Executed"
@@ -573,6 +575,7 @@ export default function App() {
                 subValue={`${battle.uniqueTraders} Unique Wallets`}
                 icon={<TrendingUp size={20} />}
                 colorClass="text-action-green"
+                tooltip="Total number of individual buy/sell transactions executed by unique wallet addresses. Each wallet can make multiple trades."
               />
                <StatCard
                 label={`${battle.artistA.name}'s Trading Volume`}
@@ -580,6 +583,7 @@ export default function App() {
                 subValue={formatUsd(battle.totalVolumeA, solPrice)}
                 icon={<Activity size={20} />}
                 colorClass="text-wave-blue"
+                tooltip={`All trading volume that occurred in ${battle.artistA.name}'s pool. Artists earn 1% of their pool's trading volume as fees.`}
               />
                <StatCard
                 label={`${battle.artistB.name}'s Trading Volume`}
@@ -587,6 +591,7 @@ export default function App() {
                 subValue={formatUsd(battle.totalVolumeB, solPrice)}
                 icon={<Activity size={20} />}
                 colorClass="text-wave-green"
+                tooltip={`All trading volume that occurred in ${battle.artistB.name}'s pool. Artists earn 1% of their pool's trading volume as fees.`}
               />
             </section>
 
@@ -599,6 +604,7 @@ export default function App() {
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                       <DollarSign className="w-5 h-5 text-action-green" />
                       Final Settlement Breakdown
+                      <InfoTooltip content="When a battle ends, the losing pool is distributed according to fixed percentages: 40% to winning traders, 50% returned to losing traders, 5% to winning artist, 2% to losing artist, and 3% to platform." />
                     </h3>
                     <div className="text-right">
                       <span className="block text-sm text-ui-gray bg-navy-900 px-3 py-1 rounded-lg border border-navy-800">
@@ -640,7 +646,10 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-navy-800 border border-navy-700 rounded-2xl p-6 h-80 flex flex-col min-w-0">
-                    <h3 className="text-lg font-bold text-white mb-6">Final Pool Results</h3>
+                    <div className="flex items-center gap-2 mb-6">
+                      <h3 className="text-lg font-bold text-white">Final Pool Results</h3>
+                      <InfoTooltip content="Total Value Locked (TVL) in each artist's pool at the end of the battle. The artist with the higher TVL wins the battle." />
+                    </div>
                     <div className="flex-1 w-full min-h-[200px] min-w-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={tvlData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
@@ -679,6 +688,7 @@ export default function App() {
                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                      <DollarSign className="w-5 h-5 text-action-green" />
                      Artist Earnings (Final)
+                     <InfoTooltip content="Artists earn revenue from two sources: continuous trading fees (1% of their pool's volume) and settlement bonuses (5% for winner, 2% for loser from the losing pool)." />
                    </h3>
 
                    <div className="space-y-6">
@@ -704,13 +714,19 @@ export default function App() {
                            <span className="text-slate-400">
                              ├─ Trading fees (1% of {formatSol(battle.totalVolumeA)})
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.artistAFees)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.artistAFees)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistAFees, solPrice)}</span>
+                           </div>
                          </div>
                          <div className="flex justify-between items-center">
                            <span className="text-slate-400">
                              └─ {settlement.winnerId === 'A' ? 'Winner bonus (5%)' : 'Loser consolation (2%)'}
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.artistASettlement)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.artistASettlement)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistASettlement, solPrice)}</span>
+                           </div>
                          </div>
                        </div>
                      </div>
@@ -737,13 +753,19 @@ export default function App() {
                            <span className="text-slate-400">
                              ├─ Trading fees (1% of {formatSol(battle.totalVolumeB)})
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.artistBFees)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.artistBFees)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistBFees, solPrice)}</span>
+                           </div>
                          </div>
                          <div className="flex justify-between items-center">
                            <span className="text-slate-400">
                              └─ {settlement.winnerId === 'B' ? 'Winner bonus (5%)' : 'Loser consolation (2%)'}
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.artistBSettlement)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.artistBSettlement)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.artistBSettlement, solPrice)}</span>
+                           </div>
                          </div>
                        </div>
                      </div>
@@ -770,13 +792,19 @@ export default function App() {
                            <span className="text-slate-400">
                              ├─ Trading fees (0.5% of total volume)
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.platformFees)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.platformFees)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.platformFees, solPrice)}</span>
+                           </div>
                          </div>
                          <div className="flex justify-between items-center">
                            <span className="text-slate-400">
                              └─ Settlement bonus (3% of loser pool)
                            </span>
-                           <span className="font-mono text-slate-300">{formatSol(settlement.platformSettlement)}</span>
+                           <div className="text-right">
+                             <span className="font-mono text-slate-300 block">{formatSol(settlement.platformSettlement)}</span>
+                             <span className="text-[10px] text-slate-500">{formatUsd(settlement.platformSettlement, solPrice)}</span>
+                           </div>
                          </div>
                        </div>
                      </div>
