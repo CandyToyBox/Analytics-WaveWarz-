@@ -22,6 +22,7 @@ export async function fetchBattlesFromSupabase(): Promise<BattleSummary[] | null
     const { data, error } = await supabase
       .from('battles')
       .select('*')
+      .eq('is_test_battle', false)
       .order('created_at', { ascending: false });
 
     if (error) {
